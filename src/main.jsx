@@ -26,7 +26,7 @@ const DEMO_RECORD = {
   ]
 };
 
-const EMPTY_ITEM = { content: '新增服务内容', unit: '项', quantity: 1, unitPrice: 0, amount: 0 };
+const EMPTY_ITEM = { content: '新增服务内容', unit: '项', quantity: 1, unitPrice: 0, amountOverride: null };
 
 function toNumber(value) {
   const result = Number(String(value ?? '').replace(/[\s,，￥¥]/g, ''));
@@ -38,6 +38,10 @@ function formatMoney(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
+}
+
+function getItemAmount(item) {
+  return item.amountOverride ?? (toNumber(item.quantity) * toNumber(item.unitPrice));
 }
 
 function formatServiceDate(value) {
@@ -81,7 +85,7 @@ function parseServiceItems({ contents, units, quantities, unitPrices }) {
       unit: unitValues[index] || '项',
       quantity,
       unitPrice,
-      amount: quantity * unitPrice
+      amountOverride: null
     };
   });
 }
@@ -137,6 +141,7 @@ async function loadSdkContext() {
 
 function App() {
   const [record, setRecord] = useState(DEMO_RECORD);
+  const [projectName, setProjectName] = useState(DEMO_RECORD.projectName);
   const [items, setItems] = useState(DEMO_RECORD.items);
   const [status, setStatus] = useState({ kind: 'demo', message: '演示数据已加载。进入飞书应用插件后可选择多维表格记录。' });
   const [sdkContext, setSdkContext] = useState(null);
@@ -153,7 +158,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
 
   const total = useMemo(
-    () => items.reduce((sum, item) => sum + toNumber(item.amount), 0),
+    () => items.reduce((sum, item) => sum + getItemAmount(item), 0),
     [items]
   );
 
@@ -269,6 +274,7 @@ function App() {
         servicePeriod: servicePeriod || '未填写服务起止时间',
         items: nextItems.length ? nextItems : [EMPTY_ITEM]
       });
+      setProjectName(projectName || '未填写项目名称');
       setItems(nextItems.length ? nextItems : [EMPTY_ITEM]);
       setStatus({ kind: 'connected', message: `已按所选记录更新验收单。数量和单价可在右侧继续调整。${priceNotice}` });
     } catch (error) {
@@ -298,8 +304,10 @@ function App() {
     setItems((current) => current.map((item, itemIndex) => (
       itemIndex === index
         ? (() => {
-          const next = { ...item, [key]: key === 'quantity' || key === 'unitPrice' || key === 'amount' ? toNumber(value) : value };
-          if (key === 'quantity' || key === 'unitPrice') next.amount = toNumber(next.quantity) * toNumber(next.unitPrice);
+          const next = { ...item };
+          if (key === 'amount') next.amountOverride = toNumber(value);
+          else next[key] = key === 'quantity' || key === 'unitPrice' ? toNumber(value) : value;
+          if (key === 'quantity' || key === 'unitPrice') next.amountOverride = null;
           return next;
         })()
         : item
@@ -308,7 +316,8 @@ function App() {
 
   function resetPricing() {
     setItems(record.items.map((item) => ({ ...item })));
-    setStatus({ kind: 'demo', message: '数量和单价已恢复为所选记录的初始值。' });
+    setProjectName(record.projectName);
+    setStatus({ kind: 'demo', message: '项目名称、数量和单价已恢复为所选记录的初始值。' });
   }
 
   const fieldOptions = fieldMetaList.map((field) => ({ value: field.id, label: field.name }));
@@ -337,8 +346,8 @@ function App() {
               </colgroup>
               <tbody>
                 <tr><td colSpan="6" className="sheet-title">档案服务验收单</td></tr>
-                <tr><td colSpan="6" className="acceptance-type">样本验收（　）　　阶段性验收（　）　　终验（√）</td></tr>
-                <tr><th colSpan="2">项目名称</th><td colSpan="4" className="strong-cell">{record.projectName}</td></tr>
+                <tr><td colSpan="6" className="acceptance-type">样本验收（　）　　阶段性验收（　）　　终验（　）</td></tr>
+                <tr><th colSpan="2">项目名称</th><td colSpan="4" className="strong-cell">{projectName}</td></tr>
                 <tr><th colSpan="2">服务起止时间</th><td colSpan="4" className="strong-cell">{record.servicePeriod}</td></tr>
                 <tr className="service-heading">
                   <th rowSpan={items.length + 2} colSpan="2">服务内容</th>
@@ -405,13 +414,18 @@ function App() {
           <section className="panel-section editable-section">
             <div className="panel-heading"><FileText size={18} /><h2>数量与单价</h2></div>
             <p className="panel-hint">打印单不显示单价。数量或单价修改后自动重算金额；金额也可单独调整，合计取调整后的金额。</p>
+            <label className="project-name-editor">项目名称
+              <input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+            </label>
             <div className="pricing-list">
               {items.map((item, index) => (
                 <div className="pricing-row" key={`${item.content}-editor-${index}`}>
-                  <div className="pricing-name">{item.content}</div>
+                  <label className="pricing-name">服务内容
+                    <input value={item.content} onChange={(event) => updateItem(index, 'content', event.target.value)} />
+                  </label>
                   <label>数量<input type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateItem(index, 'quantity', event.target.value)} /></label>
                   <label>单价<input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, 'unitPrice', event.target.value)} /></label>
-                  <label>金额<input type="number" min="0" step="0.01" value={item.amount} onChange={(event) => updateItem(index, 'amount', event.target.value)} /></label>
+                  <label>金额<input type="number" min="0" step="0.01" value={getItemAmount(item)} onChange={(event) => updateItem(index, 'amount', event.target.value)} /></label>
                   <button className="icon-action" title="删除服务项" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>
                 </div>
               ))}
