@@ -128,16 +128,19 @@ async function loadSdkContext() {
 
   if (dashboard?.state === 'View') {
     const savedCondition = config?.dataConditions?.[0];
-    if (!savedCondition?.baseToken || !bitable?.base) {
+    const snapshot = config?.customConfig?.snapshot;
+    if (!savedCondition?.baseToken || !snapshot) {
       throw new Error('应用尚未完成数据源配置，请在插件菜单中进入配置模式后保存。');
     }
 
     return {
-      Workspace: { getBitable: async () => bitable },
+      mode: 'view',
+      Workspace: null,
       initialBaseToken: savedCondition.baseToken,
       initialTableId: savedCondition.tableId ?? '',
       initialRecordId: config?.customConfig?.recordId ?? '',
       initialFieldMap: config?.customConfig?.fieldMap ?? {},
+      snapshot,
       bases: [{ token: savedCondition.baseToken, name: '已配置多维表格' }]
     };
   }
@@ -146,6 +149,7 @@ async function loadSdkContext() {
     try {
       const baseResult = await workspace.getBaseList({});
       return {
+        mode: 'config',
         Workspace: workspace,
         initialBaseToken: config?.dataConditions?.[0]?.baseToken ?? '',
         initialTableId: config?.dataConditions?.[0]?.tableId ?? '',
@@ -165,6 +169,7 @@ async function loadSdkContext() {
   // Sidebar plugins access the current Base directly instead of using Workspace.
   await directBitable.base.getTableMetaList();
   return {
+    mode: 'config',
     Workspace: { getBitable: async () => directBitable },
     initialBaseToken: '__current_base__',
     initialTableId: '',
@@ -203,6 +208,17 @@ function App() {
       .then((context) => {
         if (cancelled) return;
         setSdkContext(context);
+        if (context.mode === 'view') {
+          setProjectName(context.snapshot.projectName || DEMO_RECORD.projectName);
+          setRecord({
+            projectName: context.snapshot.projectName || DEMO_RECORD.projectName,
+            servicePeriod: context.snapshot.servicePeriod || '',
+            items: context.snapshot.items?.length ? context.snapshot.items : DEMO_RECORD.items
+          });
+          setItems(context.snapshot.items?.length ? context.snapshot.items : DEMO_RECORD.items);
+          setStatus({ kind: 'connected', message: '已加载保存的验收单。请通过插件菜单进入配置模式更新数据源。' });
+          return;
+        }
         const defaultToken = context.initialBaseToken || context.bases[0]?.token || '';
         setBaseToken(defaultToken);
         setFieldMap((current) => ({ ...current, ...context.initialFieldMap }));
@@ -222,7 +238,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!sdkContext || !baseToken) return;
+    if (!sdkContext || sdkContext.mode === 'view' || !baseToken) return;
     let cancelled = false;
     setIsLoading(true);
     sdkContext.Workspace.getBitable(baseToken)
@@ -330,7 +346,15 @@ function App() {
     try {
       await bitable.dashboard.saveConfig({
         dataConditions: [{ baseToken, tableId }],
-        customConfig: { fieldMap, recordId }
+        customConfig: {
+          fieldMap,
+          recordId,
+          snapshot: {
+            projectName,
+            servicePeriod: record.servicePeriod,
+            items
+          }
+        }
       });
       setStatus({ kind: 'connected', message: '应用配置已保存。' });
     } catch (error) {
@@ -412,7 +436,9 @@ function App() {
         <aside className="control-panel" aria-label="验收单编辑器">
           <section className="panel-section">
             <div className="panel-heading"><Database size={18} /><h2>数据源</h2></div>
-            {sdkContext ? (
+            {sdkContext?.mode === 'view' ? (
+              <p className="panel-hint">当前为查看模式，正在展示已保存的验收单。通过插件菜单进入配置模式可更新数据源。</p>
+            ) : sdkContext ? (
               <>
                 <label>多维表格
                   <select value={baseToken} onChange={(event) => setBaseToken(event.target.value)}>
