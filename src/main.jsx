@@ -121,21 +121,39 @@ const FIELD_ALIASES = {
 
 async function loadSdkContext() {
   const sdk = await import('@lark-base-open/js-sdk');
-  const { workspace, dashboard } = sdk;
-
-  if (!workspace?.getBaseList || !workspace?.getBitable) {
-    throw new Error('当前插件容器未提供 Workspace SDK。');
-  }
+  const { workspace, dashboard, bitable } = sdk;
+  const directBitable = bitable?.base?.getTableMetaList ? bitable : null;
 
   const config = await dashboard?.getConfig?.().catch(() => null);
-  const baseResult = await workspace.getBaseList({});
+  if (workspace?.getBaseList && workspace?.getBitable) {
+    try {
+      const baseResult = await workspace.getBaseList({});
+      return {
+        Workspace: workspace,
+        initialBaseToken: config?.dataConditions?.[0]?.baseToken ?? '',
+        initialTableId: config?.dataConditions?.[0]?.tableId ?? '',
+        initialRecordId: config?.customConfig?.recordId ?? '',
+        initialFieldMap: config?.customConfig?.fieldMap ?? {},
+        bases: baseResult?.base_list ?? []
+      };
+    } catch (error) {
+      if (!directBitable) throw error;
+    }
+  }
+
+  if (!directBitable) {
+    throw new Error('当前插件容器未提供飞书多维表格 SDK。');
+  }
+
+  // Sidebar plugins access the current Base directly instead of using Workspace.
+  await directBitable.base.getTableMetaList();
   return {
-    Workspace: workspace,
-    initialBaseToken: config?.dataConditions?.[0]?.baseToken ?? '',
-    initialTableId: config?.dataConditions?.[0]?.tableId ?? '',
-    initialRecordId: config?.customConfig?.recordId ?? '',
-    initialFieldMap: config?.customConfig?.fieldMap ?? {},
-    bases: baseResult?.base_list ?? []
+    Workspace: { getBitable: async () => directBitable },
+    initialBaseToken: '__current_base__',
+    initialTableId: '',
+    initialRecordId: '',
+    initialFieldMap: {},
+    bases: [{ token: '__current_base__', name: '当前多维表格' }]
   };
 }
 
