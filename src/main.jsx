@@ -191,9 +191,12 @@ function App() {
         setFieldMap((current) => ({ ...current, ...context.initialFieldMap }));
         setStatus({ kind: 'connected', message: '已连接飞书应用插件环境。请选择数据表与记录。' });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          setStatus({ kind: 'demo', message: '未检测到飞书容器，正在使用演示记录核对单据版式。' });
+          const isEmbedded = window.parent !== window;
+          setStatus(isEmbedded
+            ? { kind: 'error', message: `飞书 SDK 初始化失败：${error?.message || '未知错误'}` }
+            : { kind: 'demo', message: '未检测到飞书容器，正在使用演示记录核对单据版式。' });
         }
       });
     return () => {
