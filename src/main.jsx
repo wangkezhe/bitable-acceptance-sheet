@@ -125,6 +125,23 @@ async function loadSdkContext() {
   const directBitable = bitable?.base?.getTableMetaList ? bitable : null;
 
   const config = await dashboard?.getConfig?.().catch(() => null);
+
+  if (dashboard?.state === 'View') {
+    const savedCondition = config?.dataConditions?.[0];
+    if (!savedCondition?.baseToken || !bitable?.base) {
+      throw new Error('应用尚未完成数据源配置，请在插件菜单中进入配置模式后保存。');
+    }
+
+    return {
+      Workspace: { getBitable: async () => bitable },
+      initialBaseToken: savedCondition.baseToken,
+      initialTableId: savedCondition.tableId ?? '',
+      initialRecordId: config?.customConfig?.recordId ?? '',
+      initialFieldMap: config?.customConfig?.fieldMap ?? {},
+      bases: [{ token: savedCondition.baseToken, name: '已配置多维表格' }]
+    };
+  }
+
   if (workspace?.getBaseList && workspace?.getBitable) {
     try {
       const baseResult = await workspace.getBaseList({});
