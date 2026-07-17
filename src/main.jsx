@@ -121,16 +121,16 @@ const FIELD_ALIASES = {
 
 async function loadSdkContext() {
   const sdk = await import('@lark-base-open/js-sdk');
-  const { Workspace, dashboard } = sdk;
+  const { workspace, dashboard } = sdk;
 
-  if (!Workspace?.getBaseList || !Workspace?.getBitable) {
+  if (!workspace?.getBaseList || !workspace?.getBitable) {
     throw new Error('当前插件容器未提供 Workspace SDK。');
   }
 
   const config = await dashboard?.getConfig?.().catch(() => null);
-  const baseResult = await Workspace.getBaseList({});
+  const baseResult = await workspace.getBaseList({});
   return {
-    Workspace,
+    Workspace: workspace,
     initialBaseToken: config?.dataConditions?.[0]?.baseToken ?? '',
     initialTableId: config?.dataConditions?.[0]?.tableId ?? '',
     initialRecordId: config?.customConfig?.recordId ?? '',
